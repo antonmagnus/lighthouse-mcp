@@ -1,0 +1,42 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lighthouse-mcp",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true
+  },
+
+  // The Worker (src/worker.ts) forwards MCP requests to a container instance.
+  // The container image runs Node + Chromium + Lighthouse and serves the
+  // Streamable-HTTP MCP endpoint on port 8080 (see Dockerfile / src/http.ts).
+  "containers": [
+    {
+      "class_name": "LighthouseContainer",
+      "image": "./Dockerfile",
+      // Lighthouse + headless Chromium is memory/CPU heavy. standard-3 gives
+      // 2 vCPU / 8 GiB / 16 GB disk. Drop to standard-2 to save cost, or bump
+      // to standard-4 for heavier concurrency.
+      "instance_type": "standard-3",
+      // Keep this in sync with INSTANCE_COUNT in src/worker.ts.
+      "max_instances": 3
+    }
+  ],
+
+  "durable_objects": {
+    "bindings": [
+      {
+        "class_name": "LighthouseContainer",
+        "name": "LIGHTHOUSE_CONTAINER"
+      }
+    ]
+  },
+
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["LighthouseContainer"]
+    }
+  ]
+}

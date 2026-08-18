@@ -14,8 +14,12 @@
   "scripts": {
     "build": "tsc && chmod +x build/index.js",
     "start": "node build/index.js",
+    "start:http": "node build/http.js",
     "dev": "tsc -w",
     "prepublishOnly": "npm run build",
+    "cf:dev": "wrangler dev",
+    "cf:deploy": "wrangler deploy",
+    "cf:typecheck": "wrangler deploy --dry-run --outdir=.wrangler/dry-run",
     "update-server-json": "node -e \"const fs=require('fs');const pkg=JSON.parse(fs.readFileSync('package.json'));const server=JSON.parse(fs.readFileSync('server.json'));server.version=pkg.version;server.packages[0].version=pkg.version;fs.writeFileSync('server.json',JSON.stringify(server,null,2));\""
   },
   "keywords": [
@@ -48,7 +52,10 @@
     "@hono/node-server": ">=1.19.13"
   },
   "devDependencies": {
+    "@cloudflare/containers": "^0.3.7",
+    "@cloudflare/workers-types": "^5.20260818.1",
     "@types/node": "^20.4.5",
-    "typescript": "^5.1.6"
+    "typescript": "^5.1.6",
+    "wrangler": "^4.124.0"
   }
 }
