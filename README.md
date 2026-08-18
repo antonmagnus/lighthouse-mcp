@@ -143,6 +143,22 @@ Wrangler prints the deployed Worker URL, e.g.
 `https://lighthouse-mcp.<your-subdomain>.workers.dev`. The MCP endpoint is that
 URL + `/mcp`.
 
+### Protect it with a shared secret
+
+Set an `MCP_AUTH_TOKEN` secret and the Worker will require
+`Authorization: Bearer <token>` on every `/mcp` request (the `/health` check
+stays open). Auth is enforced at the Worker edge; the container itself is not
+publicly reachable.
+
+```bash
+# Generate a strong token and store it as a Worker secret:
+openssl rand -base64 32 | npx wrangler secret put MCP_AUTH_TOKEN
+```
+
+Setting the secret triggers a new deployment. Omit this step to leave the
+endpoint open. To rotate, run the command again with a new value; to disable,
+`npx wrangler secret delete MCP_AUTH_TOKEN`.
+
 > **Note:** the first request cold-starts a container and can take a while; a
 > full audit itself takes tens of seconds. `sleepAfter` (in `src/worker.ts`)
 > keeps instances warm between audits.
@@ -156,7 +172,10 @@ Point any Streamable-HTTP-capable MCP client at the `/mcp` URL:
   "mcpServers": {
     "lighthouse-remote": {
       "type": "streamable-http",
-      "url": "https://lighthouse-mcp.<your-subdomain>.workers.dev/mcp"
+      "url": "https://lighthouse-mcp.<your-subdomain>.workers.dev/mcp",
+      "headers": {
+        "Authorization": "Bearer <your MCP_AUTH_TOKEN>"
+      }
     }
   }
 }
@@ -170,17 +189,24 @@ For clients that only speak stdio, bridge with
   "mcpServers": {
     "lighthouse-remote": {
       "command": "npx",
-      "args": ["mcp-remote", "https://lighthouse-mcp.<your-subdomain>.workers.dev/mcp"]
+      "args": [
+        "mcp-remote",
+        "https://lighthouse-mcp.<your-subdomain>.workers.dev/mcp",
+        "--header",
+        "Authorization: Bearer <your MCP_AUTH_TOKEN>"
+      ]
     }
   }
 }
 ```
 
-> **Security:** this configuration deploys an **unauthenticated** endpoint —
-> anyone with the URL can run audits. Put Cloudflare Access in front of it, or
-> add OAuth, before exposing it publicly. SSRF protection blocks private/metadata
-> IP ranges by default, and `LIGHTHOUSE_BLOCK_LOOPBACK=1` (set in the container)
-> additionally rejects loopback targets in the remote deployment.
+(Drop the `headers` / `--header` entries if you didn't set `MCP_AUTH_TOKEN`.)
+
+> **Security:** set `MCP_AUTH_TOKEN` (see above) so the endpoint isn't open to
+> anyone with the URL; for stronger protection put Cloudflare Access or OAuth in
+> front of it. SSRF protection blocks private/metadata IP ranges by default, and
+> `LIGHTHOUSE_BLOCK_LOOPBACK=1` (set in the container) additionally rejects
+> loopback targets in the remote deployment.
 
 ### Run the HTTP server locally (without Cloudflare)
 
