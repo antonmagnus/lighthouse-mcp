@@ -14,6 +14,29 @@ const PORT = parseInt(process.env.PORT || '8080', 10);
 const HOST = process.env.HOST || '0.0.0.0';
 const MCP_PATH = process.env.MCP_PATH || '/mcp';
 
+// Optional shared secret for standalone/docker use. On Cloudflare, auth is
+// enforced at the Worker edge instead (the container is not publicly
+// reachable). When MCP_AUTH_TOKEN is set here, /mcp requires
+// `Authorization: Bearer <token>`.
+const AUTH_TOKEN = process.env.MCP_AUTH_TOKEN || '';
+
+function tokensMatch(provided: string, expected: string): boolean {
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  return diff === 0;
+}
+
+function isAuthorized(req: http.IncomingMessage): boolean {
+  if (!AUTH_TOKEN) return true;
+  const header = req.headers['authorization'] || '';
+  const prefix = 'Bearer ';
+  const token = header.startsWith(prefix) ? header.slice(prefix.length) : '';
+  return token.length > 0 && tokensMatch(token, AUTH_TOKEN);
+}
+
 // Cap request body size to avoid unbounded buffering (JSON-RPC payloads are small).
 const MAX_BODY_BYTES = 1_000_000;
 
@@ -45,6 +68,16 @@ async function handleMcp(req: http.IncomingMessage, res: http.ServerResponse) {
   // Stateless mode only makes sense for POST (client->server JSON-RPC).
   // GET (server-initiated SSE) and DELETE (session teardown) aren't supported
   // without sessions, so reject them clearly.
+  if (!isAuthorized(req)) {
+    res.setHeader('WWW-Authenticate', 'Bearer realm="lighthouse-mcp"');
+    sendJson(res, 401, {
+      jsonrpc: '2.0',
+      error: { code: -32001, message: 'Unauthorized' },
+      id: null,
+    });
+    return;
+  }
+
   if (req.method !== 'POST') {
     sendJson(res, 405, {
       jsonrpc: '2.0',
